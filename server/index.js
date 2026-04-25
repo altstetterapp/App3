@@ -9,6 +9,7 @@ const __dirname = dirname(__filename);
 const app = express();
 const PORT = Number(process.env.PORT) || 3001;
 const PW = process.env.APP_PASSWORD ?? "dev";
+console.log("APP_PASSWORD:", process.env.APP_PASSWORD ? "SET" : "NOT SET");
 app.use(cors({
   origin: [
     "http://localhost:5173",
