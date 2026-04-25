@@ -1,5 +1,6 @@
 run = "npm install && npm run build && node server/index.js"
 language = "nodejs"
+modules = ["nodejs-20"]
 
 [env]
 NODE_ENV = "production"
@@ -10,3 +11,31 @@ channel = "stable-24_05"
 [deployment]
 run = ["sh", "-c", "node server/index.js"]
 build = ["sh", "-c", "npm install && npm run build"]
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start application"
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npx concurrently -n client,server -c cyan,green \"npx vite --port 5000\" \"npx tsx watch server/index.ts\""
+waitForPort = 5000
+
+[[ports]]
+localPort = 3001
+externalPort = 80
