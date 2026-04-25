@@ -2,7 +2,7 @@
 // BASE_URL and APP_PASSWORD come from Vite env vars (VITE_ prefix exposes them to the browser).
 // Defaults keep local dev zero-config.
 
-const BASE_URL = (import.meta.env['VITE_API_URL']      as string | undefined) ?? 'http://localhost:3001'
+const BASE_URL = (import.meta.env['VITE_API_URL']      as string | undefined) ?? ''
 const APP_PW   = (import.meta.env['VITE_APP_PASSWORD'] as string | undefined) ?? 'dev'
 
 function authHeaders(): Record<string, string> {
