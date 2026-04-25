@@ -99,6 +99,12 @@ app.post(
 );
 if (process.env.NODE_ENV === "production") {
   const DIST = join(__dirname, "../dist");
+  app.use((req, res, next) => {
+    if (req.path === "/" || req.path.endsWith(".html") || req.path === "/sw.js" || req.path === "/registerSW.js") {
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    }
+    next();
+  });
   app.use(express.static(DIST));
   app.get("*", (_req, res) => res.sendFile(join(DIST, "index.html")));
 }
