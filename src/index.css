@@ -1,0 +1,127 @@
+@import "tailwindcss";
+
+@theme {
+  /* ─── Fonts ────────────────────────────────────────────── */
+  --font-sans:    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", system-ui, sans-serif;
+
+  /* ─── Colors — Gallery vibe (default light theme) ─────── */
+  --color-bg:            #ffffff;
+  --color-text:          #111315;
+  --color-text-muted:    #6b7280;
+  --color-text-faint:    #9ca3af;
+
+  --color-border:        rgba(0, 0, 0, 0.06);
+  --color-border-strong: rgba(0, 0, 0, 0.12);
+
+  --color-accent:        #3a7d44;
+  --color-accent-soft:   #e8f1ea;
+
+  --color-water:         #3b82f6;
+  --color-water-soft:    #eaf2ff;
+
+  --color-warn:          #e0893a;
+  --color-warn-soft:     #fcefe1;
+
+  --color-danger:        #c0392b;
+  --color-danger-soft:   #fdecea;
+
+  --color-chip-bg:       #f4f4f2;
+
+  /* Terracotta vibe — available as variant tokens */
+  --color-tc-bg:          #fbf6ee;
+  --color-tc-text:        #2b1f16;
+  --color-tc-text-muted:  #7b6653;
+  --color-tc-accent:      #7a8a4a;
+  --color-tc-water:       #5b7da3;
+  --color-tc-warn:        #c05a2a;
+
+  /* Nordic vibe */
+  --color-nd-bg:          #f5f5f3;
+  --color-nd-text:        #0a0a0a;
+  --color-nd-text-muted:  #555555;
+  --color-nd-chip:        #ebeae6;
+
+  /* ─── Typography scale ─────────────────────────────────── */
+  --font-size-heading:  1.75rem;   /* 28px */
+  --font-size-title:    1.1875rem; /* 19px */
+  --font-size-body-lg:  0.9375rem; /* 15px */
+  --font-size-body:     0.8125rem; /* 13px */
+  --font-size-body-sm:  0.78125rem;/* 12.5px */
+  --font-size-caption:  0.75rem;   /* 12px */
+  --font-size-chip:     0.6875rem; /* 11px */
+  --font-size-small:    0.65625rem;/* 10.5px */
+  --font-size-tiny:     0.59375rem;/* 9.5px */
+  --font-size-micro:    0.53125rem;/* 8.5px */
+
+  /* ─── Letter spacing ───────────────────────────────────── */
+  --tracking-tight:   -0.03125rem; /* -0.5px */
+  --tracking-section:  0.075rem;   /* 1.2px — ALL-CAPS section labels */
+
+  /* ─── Border radii ─────────────────────────────────────── */
+  --radius-phone:      2.75rem;  /* 44px */
+  --radius-card:       1.125rem; /* 18px */
+  --radius-plant-card: 1.375rem; /* 22px */
+  --radius-pill:       624.9375rem; /* ~9999px */
+  --radius-sheet:      1.75rem;  /* 28px */
+  --radius-container:  0.875rem; /* 14px */
+  --radius-chip:       0.75rem;  /* 12px */
+  --radius-stat:       0.75rem;  /* 12px */
+  --radius-action:     0.875rem; /* 14px */
+  --radius-dot:        0.25rem;  /* 4px */
+
+  /* ─── Shadows ──────────────────────────────────────────── */
+  --shadow-card:  0 20px 45px -15px rgba(0,0,0,0.18), 0 4px 12px rgba(0,0,0,0.05);
+  --shadow-phone: 0 0 0 1px rgba(0,0,0,0.08), 0 40px 80px -20px rgba(0,0,0,0.2);
+  --shadow-sheet: 0 -10px 30px rgba(0,0,0,0.12);
+  --shadow-fab:   0 10px 25px -5px rgba(0,0,0,0.3), 0 4px 10px rgba(0,0,0,0.15);
+  --shadow-arrow: 0 2px 8px rgba(0,0,0,0.06);
+
+  /* ─── Spacing extras ───────────────────────────────────── */
+  --spacing-status-bar: 3.375rem; /* 54px */
+  --spacing-tab-bar:    5.125rem; /* 82px */
+}
+
+/* ─── Base reset ─────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--color-bg);
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── Skeleton shimmer ───────────────────────────────────── */
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.45; }
+}
+.skeleton-pulse {
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+/* ─── Spinner ────────────────────────────────────────────── */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.spin {
+  animation: spin 0.7s linear infinite;
+}
+
+/* Hide scrollbars globally (mobile-app feel) */
+* {
+  scrollbar-width: none;
+}
+*::-webkit-scrollbar {
+  display: none;
+}

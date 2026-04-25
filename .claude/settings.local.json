@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:api.anthropic.com)",
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "mcp__Claude_in_Chrome__navigate",
+      "mcp__Claude_in_Chrome__browser_batch",
+      "mcp__Claude_in_Chrome__javascript_tool",
+      "Bash(npm install *)",
+      "PowerShell(Get-Command node, npm, npx -ErrorAction SilentlyContinue | Select-Object Name, Source; $env:PATH -split \";\" | Where-Object { $_ -match \"node\" })",
+      "PowerShell(Get-ChildItem \"C:\\\\Program Files\\\\nodejs\" -ErrorAction SilentlyContinue | Select-Object Name; Get-ChildItem \"$env:APPDATA\\\\npm\" -ErrorAction SilentlyContinue | Select-Object Name; Get-ChildItem \"$env:ProgramFiles\\\\nodejs\" -ErrorAction SilentlyContinue | Select-Object Name; & \"C:\\\\Program Files\\\\nodejs\\\\node.exe\" --version 2>&1)",
+      "PowerShell($env:PATH = \"C:\\\\Program Files\\\\nodejs;$env:PATH\"; cd \"C:\\\\Users\\\\altst\\\\OneDrive\\\\Desktop\\\\Claude\\\\App3\"; & \"C:\\\\Program Files\\\\nodejs\\\\npm.cmd\" install 2>&1)",
+      "PowerShell($env:PATH = \"C:\\\\Program Files\\\\nodejs;$env:PATH\"; cd \"C:\\\\Users\\\\altst\\\\OneDrive\\\\Desktop\\\\Claude\\\\App3\"; & \"C:\\\\Program Files\\\\nodejs\\\\npx.cmd\" tsc --noEmit 2>&1)",
+      "PowerShell($env:PATH = \"C:\\\\Program Files\\\\nodejs;$env:PATH\"; cd \"C:\\\\Users\\\\altst\\\\OneDrive\\\\Desktop\\\\Claude\\\\App3\"; & \"C:\\\\Program Files\\\\nodejs\\\\npm.cmd\" run build 2>&1)",
+      "PowerShell($env:PATH = \"C:\\\\Program Files\\\\nodejs;$env:PATH\"; cd \"C:\\\\Users\\\\altst\\\\OneDrive\\\\Desktop\\\\Claude\\\\App3\"; npm run build 2>&1)",
+      "PowerShell($env:PATH = \"C:\\\\Program Files\\\\nodejs;\" + $env:PATH; cd \"C:\\\\Users\\\\altst\\\\OneDrive\\\\Desktop\\\\Claude\\\\App3\"; & \"C:\\\\Program Files\\\\nodejs\\\\npm.cmd\" run build 2>&1)",
+      "PowerShell($env:PATH = \"C:\\\\Program Files\\\\nodejs;\" + $env:PATH; cd \"C:\\\\Users\\\\altst\\\\OneDrive\\\\Desktop\\\\Claude\\\\App3\"; & \"C:\\\\Program Files\\\\nodejs\\\\npm.cmd\" install -D vite-plugin-pwa 2>&1)",
+      "PowerShell($env:PATH = \"C:\\\\Program Files\\\\nodejs;\" + $env:PATH; cd \"C:\\\\Users\\\\altst\\\\OneDrive\\\\Desktop\\\\Claude\\\\App3\"; & \"C:\\\\Program Files\\\\nodejs\\\\npx.cmd\" tsx scripts/generate-icons.ts 2>&1)",
+      "PowerShell($env:PATH = \"C:\\\\Program Files\\\\nodejs;\" + $env:PATH; cd \"C:\\\\Users\\\\altst\\\\OneDrive\\\\Desktop\\\\Claude\\\\App3\"; & \"C:\\\\Program Files\\\\nodejs\\\\npm.cmd\" install -D workbox-precaching workbox-routing workbox-strategies workbox-expiration workbox-cacheable-response 2>&1)"
+    ]
+  }
+}

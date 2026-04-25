@@ -1,0 +1,12 @@
+run = "npm install && npm run build && node server/index.js"
+language = "nodejs"
+
+[env]
+NODE_ENV = "production"
+
+[nix]
+channel = "stable-24_05"
+
+[deployment]
+run = ["sh", "-c", "node server/index.js"]
+build = ["sh", "-c", "npm install && npm run build"]
