@@ -32,8 +32,6 @@ function requirePassword(req, res, next) {
 }
 app.post("/api/auth", (req, res) => {
   const { password } = req.body;
-  console.log("Received password:", req.body.password);
-  console.log("Expected:", process.env.APP_PASSWORD);
   if (password === PW) {
     res.json({ ok: true });
   } else {
