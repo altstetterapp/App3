@@ -4,6 +4,10 @@ dist-server
 .env
 *.local
 
+# Generated build artifacts
+server/index.js
+uploads/
+
 # OS
 .DS_Store
 Thumbs.db
