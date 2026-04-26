@@ -96,12 +96,15 @@ function MetaRow({ label, value, last }: { label: string; value: string; last?: 
 
 // ─── Confirm popup ────────────────────────────────────────────
 
-function ConfirmPopup({ action, onConfirm, onCancel }: {
+function ConfirmPopup({ action, mlValue, onMlChange, onConfirm, onCancel }: {
   action: ActionType
+  mlValue?: number
+  onMlChange?: (v: number) => void
   onConfirm: () => void
   onCancel: () => void
 }) {
   const meta = ACTION_META[action]
+  const isGiessen = action === 'giessen'
   return (
     <div style={{
       position: 'absolute', inset: 0, zIndex: 60,
@@ -119,6 +122,30 @@ function ConfirmPopup({ action, onConfirm, onCancel }: {
         <div style={{ fontSize: fs(15), fontWeight: TYPE.weight.semibold, color: V.text, textAlign: 'center' }}>
           {meta.confirmLabel}
         </div>
+
+        {isGiessen && mlValue !== undefined && onMlChange && (
+          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: sp(6) }}>
+            <label style={{ fontSize: fs(11), color: V.textMuted, fontWeight: TYPE.weight.medium }}>
+              Menge (ml)
+            </label>
+            <input
+              type="number"
+              min={50}
+              step={50}
+              value={mlValue}
+              onChange={e => onMlChange(Math.max(50, Number(e.target.value)))}
+              style={{
+                width: '100%', boxSizing: 'border-box',
+                padding: `${sp(10)}px ${sp(12)}px`,
+                borderRadius: r(10), border: `1px solid ${V.accent}`,
+                background: V.bg, color: V.text,
+                fontSize: fs(15), fontWeight: TYPE.weight.semibold,
+                fontFamily: TYPE.fontSans, outline: 'none', textAlign: 'center',
+              }}
+            />
+          </div>
+        )}
+
         <div style={{ display: 'flex', gap: sp(10), width: '100%' }}>
           <button
             onClick={onCancel}
@@ -133,12 +160,12 @@ function ConfirmPopup({ action, onConfirm, onCancel }: {
           <button
             onClick={onConfirm}
             style={{
-              flex: 1, padding: `${sp(10)}px`, borderRadius: r(12),
+              flex: isGiessen ? 2 : 1, padding: `${sp(10)}px`, borderRadius: r(12),
               border: 'none', background: V.text,
               fontSize: fs(13), fontWeight: TYPE.weight.semibold, color: V.bg, cursor: 'pointer',
             }}
           >
-            Ja
+            {isGiessen ? 'Giessen bestätigen' : 'Ja'}
           </button>
         </div>
       </div>
@@ -163,6 +190,7 @@ export default function Screen3({ onNavigate }: NavProps) {
   const [beobachtung,     setBeobachtung]     = useState<BeobachtungType | null>(null)
   const [showAuspflanzen, setShowAuspflanzen] = useState(false)
   const [pendingAction,   setPendingAction]   = useState<ActionType | null>(null)
+  const [giessenMl,       setGiessenMl]       = useState(200)
   const [showSunPicker,   setShowSunPicker]   = useState(false)
 
   const [kiStatus, setKiStatus] = useState<KiStatus>('idle')
@@ -228,7 +256,7 @@ export default function Screen3({ onNavigate }: NavProps) {
     if (!PLANT || !container || !pendingAction) return
     const today = new Date().toISOString().slice(0, 10)
     const base = { date: today, containerId: container.id, plantId: PLANT.id, plantName: PLANT.name }
-    if (pendingAction === 'giessen') addWateringEvent({ ...base, ml: 200 })
+    if (pendingAction === 'giessen') addWateringEvent({ ...base, ml: giessenMl })
     else if (pendingAction === 'duengen') addFertilizingEvent(base)
     else addSchnittEvent(base)
     setPendingAction(null)
@@ -381,7 +409,7 @@ export default function Screen3({ onNavigate }: NavProps) {
           {/* ── Aktionen ── */}
           <SectionLabel label="Aktionen" />
           <div style={{ display: 'flex', gap: sp(8), marginBottom: sp(22) }}>
-            <ActionTile icon={<IconDropFill color={V.water}  size={16} />} label="Giessen" onClick={() => setPendingAction('giessen')} />
+            <ActionTile icon={<IconDropFill color={V.water}  size={16} />} label="Giessen" onClick={() => { setGiessenMl(200); setPendingAction('giessen') }} />
             <ActionTile icon={<IconLeaf     color={V.accent} size={16} />} label="Düngen"  onClick={() => setPendingAction('duengen')} />
             <ActionTile icon={<IconScissors color={V.text}   size={16} />} label="Schnitt" onClick={() => setPendingAction('schnitt')} />
           </div>
@@ -568,6 +596,8 @@ export default function Screen3({ onNavigate }: NavProps) {
         {pendingAction && (
           <ConfirmPopup
             action={pendingAction}
+            mlValue={pendingAction === 'giessen' ? giessenMl : undefined}
+            onMlChange={pendingAction === 'giessen' ? setGiessenMl : undefined}
             onConfirm={handleActionConfirm}
             onCancel={() => setPendingAction(null)}
           />
