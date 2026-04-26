@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { VIBES, DENSITY, TYPE } from '../../tokens'
 import { useApp, daysSince } from '../../context/AppContext'
-import type { PlantData, NavProps } from '../../types'
+import type { PlantData, NavProps, WateringEvent, FertilizingEvent } from '../../types'
 import StatusBar from '../ui/StatusBar'
 import TabBar from '../ui/TabBar'
 import ContainerModal from '../ui/ContainerModal'
@@ -105,6 +105,8 @@ export default function Screen2({ onNavigate }: NavProps) {
     containers, activeContainerId, setActiveContainer,
     setActivePlant, updateContainer, deleteContainer,
     addPlant, deleteHistory,
+    wateringEvents, fertilizingEvents,
+    removeWateringEvent, removeFertilizingEvent,
   } = useApp()
 
   const container = containers.find(c => c.id === activeContainerId) ?? containers[0]
@@ -125,9 +127,6 @@ export default function Screen2({ onNavigate }: NavProps) {
 
   if (!container) return null
 
-  const imgSrc = container.photoBase64
-    ? `data:image/jpeg;base64,${container.photoBase64}`
-    : container.imgUrl
 
   return (
     <div style={{
@@ -350,35 +349,80 @@ export default function Screen2({ onNavigate }: NavProps) {
                 )
               })}
 
-              <div style={{ flex: 1 }} />
-
-              <button
-                onClick={() => setShowPlantModal(true)}
-                style={{
-                  padding: `${sp(10)}px ${sp(6)}px`, borderRadius: r(12),
-                  border: `1px solid ${V.border}`, background: V.bg,
-                  fontSize: fs(10.5), fontWeight: TYPE.weight.semibold, color: V.text,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
-                  cursor: 'pointer',
-                }}
-              >
-                <IconPlus color={V.text} size={12} /> Neu
-              </button>
             </div>
           )}
         </div>
 
-        {/* Container photo strip */}
-        {(container.photoBase64 || container.imgUrl) && (
-          <div style={{ padding: `0 ${sp(16)}px ${sp(4)}px` }}>
-            <div style={{
-              height: 60, borderRadius: r(14),
-              backgroundImage: `url(${imgSrc})`,
-              backgroundSize: 'cover', backgroundPosition: 'center',
-              border: `1px solid ${V.border}`, opacity: 0.6,
-            }} />
-          </div>
-        )}
+        {/* Container Protokoll */}
+        {(() => {
+          const wEvents = wateringEvents
+            .filter(e => e.containerId === container.id)
+            .map(e => ({ ...e, kind: 'water' as const }))
+          const fEvents = fertilizingEvents
+            .filter(e => e.containerId === container.id)
+            .map(e => ({ ...e, kind: 'fertilize' as const }))
+          const merged = [...wEvents, ...fEvents].sort((a, b) => b.date.localeCompare(a.date))
+
+          function fmtDate(iso: string) {
+            const [y, m, d] = iso.split('-')
+            return `${d}.${m}.${y}`
+          }
+
+          return (
+            <div style={{ padding: `${sp(16)}px ${sp(20)}px ${sp(4)}px` }}>
+              <div style={{
+                fontSize: fs(11), fontWeight: TYPE.weight.semibold,
+                letterSpacing: TYPE.tracking.section, color: V.textMuted,
+                textTransform: 'uppercase', marginBottom: sp(12),
+              }}>
+                Protokoll
+              </div>
+
+              {merged.length === 0 ? (
+                <div style={{ fontSize: fs(12), color: V.textFaint, paddingBottom: sp(8) }}>
+                  Noch keine Einträge
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: sp(8) }}>
+                  {merged.map(e => {
+                    const isWater = e.kind === 'water'
+                    const note = isWater
+                      ? ((e as WateringEvent).ml ? `${(e as WateringEvent).ml} ml` : undefined)
+                      : ((e as FertilizingEvent).fertilizer ?? undefined)
+                    return (
+                      <div key={e.id} style={{
+                        display: 'flex', alignItems: 'center', gap: sp(12),
+                        padding: `${sp(10)}px ${sp(14)}px`,
+                        borderRadius: r(14), border: `1px solid ${V.border}`, background: V.bg,
+                      }}>
+                        <span style={{ fontSize: 18, flexShrink: 0 }}>{isWater ? '💧' : '🌿'}</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: fs(13), fontWeight: TYPE.weight.semibold, color: V.text }}>
+                            {isWater ? 'Giessen' : 'Düngen'} · {e.plantName}
+                          </div>
+                          <div style={{ fontSize: fs(11), color: V.textMuted, marginTop: sp(1) }}>
+                            {fmtDate(e.date)}{note ? ` · ${note}` : ''}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => isWater ? removeWateringEvent(e.id) : removeFertilizingEvent(e.id)}
+                          style={{
+                            width: 28, height: 28, borderRadius: 14, flexShrink: 0,
+                            border: `1px solid ${V.border}`, background: V.chipBg,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <IconClose color={V.textMuted} size={12} />
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )
+        })()}
 
         {/* History section */}
         {container.history.length > 0 && (
