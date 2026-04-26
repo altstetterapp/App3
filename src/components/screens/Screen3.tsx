@@ -346,9 +346,8 @@ export default function Screen3({ onNavigate }: NavProps) {
           {/* ── Pflege ── */}
           <SectionLabel label="Pflege" />
           <div style={{ border: `1px solid ${V.border}`, borderRadius: r(14), overflow: 'hidden', marginBottom: sp(22) }}>
-            <MetaRow label="Giessintervall"  value="Alle 1–2 Tage" />
-            <MetaRow label="Letztes Giessen" value="Vorgestern, 18:40" />
-            <MetaRow label="Sonnenbedarf"    value="Vollsonne · 6–8 h" />
+            <MetaRow label="Giessintervall" value="Alle 1–2 Tage" />
+            <MetaRow label="Sonnenbedarf"   value="Vollsonne · 6–8 h" />
             <MetaRow label="Gepflanzt am"    value="14. März 2026" last />
           </div>
 
