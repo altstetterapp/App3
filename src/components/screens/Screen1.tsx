@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { VIBES, DENSITY, TYPE } from '../../tokens'
 import { WEATHER as MOCK_WEATHER } from '../../data/mockData'
 import { useWeather } from '../../hooks/useWeather'
@@ -23,19 +23,22 @@ const WATER_STYLE: Record<WaterStatus, { bg: string; fg: string }> = {
 
 // ─── Weather pill ─────────────────────────────────────────────
 
-function WeatherPill({ w }: { w: WeatherDay }) {
+function WeatherPill({ w, todayRef }: { w: WeatherDay; todayRef?: React.RefObject<HTMLDivElement | null> }) {
   return (
-    <div style={{
-      minWidth: sp(46), flex: '0 0 auto',
-      padding: `${sp(7)}px 0 ${sp(8)}px`,
-      borderRadius: r(14),
-      border: `1px solid ${w.isToday ? V.text : V.border}`,
-      background: w.isToday ? V.text : V.bg,
-      color: w.isToday ? V.bg : w.isPast ? V.textFaint : V.text,
-      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: sp(2),
-      opacity: w.isPast ? 0.55 : 1,
-      fontVariantNumeric: 'tabular-nums',
-    }}>
+    <div
+      ref={w.isToday ? todayRef : undefined}
+      style={{
+        minWidth: sp(46), flex: '0 0 auto',
+        padding: `${sp(7)}px 0 ${sp(8)}px`,
+        borderRadius: r(14),
+        border: `1px solid ${w.isToday ? V.text : V.border}`,
+        background: w.isToday ? V.text : V.bg,
+        color: w.isToday ? V.bg : w.isPast ? V.textFaint : V.text,
+        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: sp(2),
+        opacity: w.isPast ? 0.55 : 1,
+        fontVariantNumeric: 'tabular-nums',
+      }}
+    >
       <span style={{ fontSize: fs(9.5), fontWeight: TYPE.weight.semibold, letterSpacing: 0.2, textTransform: 'uppercase' }}>
         {w.isToday ? 'HEUTE' : w.day}
       </span>
@@ -49,7 +52,14 @@ function WeatherPill({ w }: { w: WeatherDay }) {
   )
 }
 
-function WeatherStrip({ days, loading }: { days: WeatherDay[]; loading: boolean }) {
+function WeatherStrip({
+  days, loading, stripRef, todayRef,
+}: {
+  days: WeatherDay[]
+  loading: boolean
+  stripRef: React.RefObject<HTMLDivElement | null>
+  todayRef: React.RefObject<HTMLDivElement | null>
+}) {
   if (loading) {
     return (
       <div style={{ display: 'flex', gap: sp(6) }}>
@@ -64,8 +74,8 @@ function WeatherStrip({ days, loading }: { days: WeatherDay[]; loading: boolean 
     )
   }
   return (
-    <div style={{ display: 'flex', gap: sp(6) }}>
-      {days.map((w, i) => <WeatherPill key={i} w={w} />)}
+    <div ref={stripRef} style={{ display: 'flex', gap: sp(6) }}>
+      {days.map((w, i) => <WeatherPill key={i} w={w} todayRef={todayRef} />)}
     </div>
   )
 }
@@ -93,10 +103,53 @@ export default function Screen1({ onNavigate }: NavProps) {
   const { containers, setActiveContainer, addContainer } = useApp()
   const [showModal, setShowModal] = useState(false)
 
-  const weatherDays  = apiDays.length > 0 ? apiDays : MOCK_WEATHER
-  const dueCount     = containers.filter(c => c.water.status !== 'ok').length
-  const totalPlants  = containers.reduce((a, c) => a + c.plants.length, 0)
-  const subtitle     = dueCount > 0
+  // Editable garden name
+  const [gardenName, setGardenName] = useState(
+    () => localStorage.getItem('rp_garden_name') ?? 'Dein Dachgarten',
+  )
+  const [editingName, setEditingName] = useState(false)
+  const [nameInput,   setNameInput]   = useState(gardenName)
+  const nameInputRef = useRef<HTMLInputElement>(null)
+
+  // Weather strip scroll-to-today
+  const scrollWrapRef = useRef<HTMLDivElement>(null)
+  const stripRef      = useRef<HTMLDivElement>(null)
+  const todayRef      = useRef<HTMLDivElement>(null)
+
+  const weatherDays = apiDays.length > 0 ? apiDays : MOCK_WEATHER
+
+  // Center today pill on mount / whenever days change
+  useEffect(() => {
+    const wrap  = scrollWrapRef.current
+    const today = todayRef.current
+    if (!wrap || !today) return
+    const wrapW  = wrap.offsetWidth
+    const pillL  = today.offsetLeft
+    const pillW  = today.offsetWidth
+    wrap.scrollLeft = pillL - wrapW / 2 + pillW / 2
+  }, [weatherDays])
+
+  // Focus input when editing starts
+  useEffect(() => {
+    if (editingName) nameInputRef.current?.focus()
+  }, [editingName])
+
+  function commitName() {
+    const trimmed = nameInput.trim() || 'Dein Dachgarten'
+    setGardenName(trimmed)
+    setNameInput(trimmed)
+    localStorage.setItem('rp_garden_name', trimmed)
+    setEditingName(false)
+  }
+
+  function startEditing() {
+    setNameInput(gardenName)
+    setEditingName(true)
+  }
+
+  const dueCount    = containers.filter(c => c.water.status !== 'ok').length
+  const totalPlants = containers.reduce((a, c) => a + c.plants.length, 0)
+  const subtitle    = dueCount > 0
     ? `${dueCount} Topf braucht Wasser · ${containers.length - dueCount} in Ordnung`
     : 'Alle Töpfe gut versorgt'
 
@@ -137,16 +190,48 @@ export default function Screen1({ onNavigate }: NavProps) {
       <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 100 }}>
         {!loading && hasFrost && <FrostBanner />}
 
-        <div style={{ padding: `${sp(2)}px ${sp(16)}px ${sp(20)}px`, overflowX: 'auto' }}>
-          <WeatherStrip days={weatherDays} loading={loading} />
+        {/* Weather strip — outer div scrolls, inner div is the flex row */}
+        <div
+          ref={scrollWrapRef}
+          style={{ padding: `${sp(2)}px ${sp(16)}px ${sp(20)}px`, overflowX: 'auto' }}
+        >
+          <WeatherStrip
+            days={weatherDays}
+            loading={loading}
+            stripRef={stripRef}
+            todayRef={todayRef}
+          />
         </div>
 
+        {/* Title */}
         <div style={{ padding: `0 ${sp(20)}px ${sp(16)}px` }}>
-          <h1 style={{
-            fontSize: fs(TYPE.size.heading), fontWeight: TYPE.weight.bold,
-            letterSpacing: TYPE.tracking.tight, fontFamily: TYPE.fontDisplay,
-            lineHeight: 1.1, margin: 0, color: V.text,
-          }}>Dein Dachgarten</h1>
+          {editingName ? (
+            <input
+              ref={nameInputRef}
+              value={nameInput}
+              onChange={e => setNameInput(e.target.value)}
+              onBlur={commitName}
+              onKeyDown={e => { if (e.key === 'Enter') commitName() }}
+              style={{
+                fontSize: fs(TYPE.size.heading), fontWeight: TYPE.weight.bold,
+                letterSpacing: TYPE.tracking.tight, fontFamily: TYPE.fontDisplay,
+                lineHeight: 1.1, color: V.text,
+                background: 'none', border: 'none', borderBottom: `2px solid ${V.accent}`,
+                outline: 'none', width: '100%', padding: `${sp(2)}px 0`,
+              }}
+            />
+          ) : (
+            <h1
+              onClick={startEditing}
+              style={{
+                fontSize: fs(TYPE.size.heading), fontWeight: TYPE.weight.bold,
+                letterSpacing: TYPE.tracking.tight, fontFamily: TYPE.fontDisplay,
+                lineHeight: 1.1, margin: 0, color: V.text, cursor: 'text',
+              }}
+            >
+              {gardenName}
+            </h1>
+          )}
           <div style={{ marginTop: sp(10), display: 'flex', alignItems: 'center', gap: sp(8), fontSize: fs(13), color: V.textMuted }}>
             <span style={{
               width: 8, height: 8, borderRadius: 4, flexShrink: 0,
@@ -157,12 +242,11 @@ export default function Screen1({ onNavigate }: NavProps) {
           </div>
         </div>
 
-        {/* Stats row */}
+        {/* Stats row — Töpfe + Pflanzen only */}
         <div style={{ padding: `0 ${sp(16)}px ${sp(22)}px`, display: 'flex', gap: sp(8) }}>
           {[
-            { v: containers.length, l: 'Töpfe'   },
-            { v: totalPlants,       l: 'Pflanzen' },
-            { v: 12,                l: 'L Wasser' },
+            { v: containers.length, l: 'Töpfe'    },
+            { v: totalPlants,       l: 'Pflanzen'  },
           ].map(({ v, l }) => (
             <div key={l} style={{
               padding: `${sp(14)}px ${sp(12)}px`,
@@ -186,10 +270,10 @@ export default function Screen1({ onNavigate }: NavProps) {
         {/* Container cards */}
         <div style={{ padding: `0 ${sp(16)}px`, display: 'flex', flexDirection: 'column', gap: sp(10) }}>
           {containers.map(c => {
-            const ws       = WATER_STYLE[c.water.status]
-            const imgSrc   = c.photoBase64 ? `data:image/jpeg;base64,${c.photoBase64}` : c.imgUrl
-            const names    = c.plants.map(p => p.name).join(', ') || 'Keine Pflanzen'
-            const count    = c.plants.length
+            const ws     = WATER_STYLE[c.water.status]
+            const imgSrc = c.photoBase64 ? `data:image/jpeg;base64,${c.photoBase64}` : c.imgUrl
+            const names  = c.plants.map(p => p.name).join(', ') || 'Keine Pflanzen'
+            const count  = c.plants.length
             return (
               <div
                 key={c.id}
