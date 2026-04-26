@@ -44,6 +44,7 @@ export interface PlantData {
   plantedDate: string   // YYYY-MM-DD
   imgUrl: string
   photoBase64?: string
+  notes?: string
   water: { label: string; status: 'ok' | 'warn' }
 }
 
@@ -85,6 +86,14 @@ export interface FertilizingEvent {
   plantId: string
   plantName: string
   fertilizer?: string
+}
+
+export interface SchnittEvent {
+  id: string
+  date: string          // YYYY-MM-DD
+  containerId: string
+  plantId: string
+  plantName: string
 }
 
 // ─── Shared ───────────────────────────────────────────────────

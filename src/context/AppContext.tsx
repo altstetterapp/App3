@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react'
-import type { ContainerData, PlantData, PlantHistory, WateringEvent, FertilizingEvent } from '../types'
+import type { ContainerData, PlantData, PlantHistory, WateringEvent, FertilizingEvent, SchnittEvent } from '../types'
 
 // ─── Initial seed data ────────────────────────────────────────
 
@@ -119,15 +119,19 @@ interface AppCtx {
   updateContainer: (id: string, patch: Partial<Omit<ContainerData, 'id' | 'plants' | 'history'>>) => void
   deleteContainer: (id: string) => void
   addPlant:        (containerId: string, draft: Omit<PlantData, 'id'>) => void
+  updatePlant:     (containerId: string, plantId: string, patch: Partial<Omit<PlantData, 'id'>>) => void
   auspflanzen:     (containerId: string, plantId: string, date: string) => void
   deleteHistory:   (containerId: string, historyId: string) => void
-  // Calendar events
+  // Calendar / action events
   wateringEvents:       WateringEvent[]
   fertilizingEvents:    FertilizingEvent[]
+  schnittEvents:        SchnittEvent[]
   addWateringEvent:     (e: Omit<WateringEvent, 'id'>) => void
   addFertilizingEvent:  (e: Omit<FertilizingEvent, 'id'>) => void
+  addSchnittEvent:      (e: Omit<SchnittEvent, 'id'>) => void
   removeWateringEvent:  (id: string) => void
   removeFertilizingEvent: (id: string) => void
+  removeSchnittEvent:   (id: string) => void
 }
 
 const Ctx = createContext<AppCtx | null>(null)
@@ -143,6 +147,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [fertilizingEvents, setFertilizingEvents] = useState<FertilizingEvent[]>(
     () => loadEvents('rp_fertilizing', SEED_FERTILIZING)
   )
+  const [schnittEvents,     setSchnittEvents]     = useState<SchnittEvent[]>(
+    () => loadEvents('rp_schnitt', [])
+  )
 
   useEffect(() => { save(containers) }, [containers])
   useEffect(() => {
@@ -151,6 +158,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     try { localStorage.setItem('rp_fertilizing', JSON.stringify(fertilizingEvents)) } catch { /* quota */ }
   }, [fertilizingEvents])
+  useEffect(() => {
+    try { localStorage.setItem('rp_schnitt', JSON.stringify(schnittEvents)) } catch { /* quota */ }
+  }, [schnittEvents])
 
   const setActiveContainer = useCallback((id: string) => setActiveContainerId(id), [])
   const setActivePlant     = useCallback((id: string) => setActivePlantId(id),     [])
@@ -181,6 +191,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const next = prev.map(c => c.id === containerId
         ? { ...c, plants: [...c.plants, { ...draft, id: uid() }] }
         : c)
+      save(next); return next
+    })
+  }, [])
+
+  const updatePlant = useCallback((containerId: string, plantId: string, patch: Partial<Omit<PlantData, 'id'>>) => {
+    setContainers(prev => {
+      const next = prev.map(c => c.id !== containerId ? c : {
+        ...c,
+        plants: c.plants.map(p => p.id === plantId ? { ...p, ...patch } : p),
+      })
       save(next); return next
     })
   }, [])
@@ -226,15 +246,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setFertilizingEvents(prev => prev.filter(e => e.id !== id))
   }, [])
 
+  const addSchnittEvent = useCallback((e: Omit<SchnittEvent, 'id'>) => {
+    setSchnittEvents(prev => [...prev, { ...e, id: uid() }])
+  }, [])
+
+  const removeSchnittEvent = useCallback((id: string) => {
+    setSchnittEvents(prev => prev.filter(e => e.id !== id))
+  }, [])
+
   return (
     <Ctx.Provider value={{
       containers, activeContainerId, activePlantId,
       setActiveContainer, setActivePlant,
       addContainer, updateContainer, deleteContainer,
-      addPlant, auspflanzen, deleteHistory,
-      wateringEvents, fertilizingEvents,
-      addWateringEvent, addFertilizingEvent,
-      removeWateringEvent, removeFertilizingEvent,
+      addPlant, updatePlant, auspflanzen, deleteHistory,
+      wateringEvents, fertilizingEvents, schnittEvents,
+      addWateringEvent, addFertilizingEvent, addSchnittEvent,
+      removeWateringEvent, removeFertilizingEvent, removeSchnittEvent,
     }}>
       {children}
     </Ctx.Provider>

@@ -1,9 +1,9 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
 import { VIBES, DENSITY, TYPE, PHONE } from '../../tokens'
 import type { NavProps } from '../../types'
 import { useApp, daysSince } from '../../context/AppContext'
 import Screen2 from './Screen2'
-import { IconDropFill, IconLeaf, IconScissors, IconPlus, IconClose, IconSun, IconThermo, IconSparkle } from '../ui/Icons'
+import { IconDropFill, IconLeaf, IconScissors, IconClose, IconSun, IconSparkle } from '../ui/Icons'
 import BeobachtungSheet from '../ui/BeobachtungSheet'
 import AuspflanzenPopup from '../ui/AuspflanzenPopup'
 import { askAI } from '../../lib/api'
@@ -14,18 +14,17 @@ const sp = (n: number) => Math.round(n * D.spaceMultiplier)
 const fs = (n: number) => n * D.fontScale
 const r  = (n: number) => Math.round(n * V.radiusMultiplier)
 
-const SHEET_H = Math.round(D.sheetH * PHONE.height)  // 484px
+const SHEET_H = Math.round(D.sheetH * PHONE.height)
 
 type BeobachtungType = 'befall' | 'auffaelligkeit'
 type KiStatus = 'idle' | 'loading' | 'done' | 'error'
+type ActionType = 'giessen' | 'duengen' | 'schnitt'
 
-interface LogItem { id: number; date: string; title: string; body: string }
-
-const INITIAL_LOG: LogItem[] = [
-  { id: 1, date: '22.04.', title: 'Erste Blüten',  body: 'Weisse Knospen an drei Zweigen entdeckt.' },
-  { id: 2, date: '19.04.', title: 'Gegossen',       body: '200 ml · Erde war leicht feucht.' },
-  { id: 3, date: '14.04.', title: 'Umgetopft',      body: 'In Terrakottatopf mit Kräutererde.' },
-]
+const ACTION_META: Record<ActionType, { emoji: string; label: string; confirmLabel: string }> = {
+  giessen: { emoji: '💧', label: 'Giessen',  confirmLabel: 'Giessen bestätigen?' },
+  duengen: { emoji: '🌿', label: 'Düngen',   confirmLabel: 'Düngen bestätigen?' },
+  schnitt: { emoji: '✂️', label: 'Schnitt',  confirmLabel: 'Schnitt bestätigen?' },
+}
 
 // ─── Sub-components ───────────────────────────────────────────
 
@@ -41,25 +40,24 @@ function SectionLabel({ label }: { label: string }) {
   )
 }
 
-function StatTile({ icon, label, value, highlight }: { icon: React.ReactNode; label: string; value: string; highlight?: boolean }) {
+function StatTile({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
     <div style={{
       padding: `${sp(9)}px ${sp(10)}px`, borderRadius: r(12),
-      background: highlight ? V.waterSoft : V.bg,
-      border: `1px solid ${highlight ? V.water + '33' : V.border}`,
+      background: V.bg, border: `1px solid ${V.border}`,
       flex: 1,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: fs(10.5), color: V.textMuted, fontWeight: TYPE.weight.medium }}>
         {icon}<span>{label}</span>
       </div>
-      <div style={{ fontSize: fs(14), fontWeight: TYPE.weight.bold, marginTop: sp(3), color: highlight ? V.water : V.text }}>
+      <div style={{ fontSize: fs(14), fontWeight: TYPE.weight.bold, marginTop: sp(3), color: V.text }}>
         {value}
       </div>
     </div>
   )
 }
 
-function ActionTile({ icon, label, onClick }: { icon: React.ReactNode; label: string; onClick?: () => void }) {
+function ActionTile({ icon, label, onClick }: { icon: React.ReactNode; label: string; onClick: () => void }) {
   return (
     <div
       onClick={onClick}
@@ -93,29 +91,109 @@ function MetaRow({ label, value, last }: { label: string; value: string; last?: 
   )
 }
 
+// ─── Confirm popup ────────────────────────────────────────────
+
+function ConfirmPopup({ action, onConfirm, onCancel }: {
+  action: ActionType
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  const meta = ACTION_META[action]
+  return (
+    <div style={{
+      position: 'absolute', inset: 0, zIndex: 60,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      background: 'rgba(0,0,0,0.18)',
+    }}>
+      <div style={{
+        background: V.bg, borderRadius: r(20),
+        padding: `${sp(22)}px ${sp(24)}px`,
+        width: 260, boxShadow: '0 12px 40px rgba(43,31,22,0.22)',
+        border: `1px solid ${V.border}`,
+        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: sp(14),
+      }}>
+        <span style={{ fontSize: 32 }}>{meta.emoji}</span>
+        <div style={{ fontSize: fs(15), fontWeight: TYPE.weight.semibold, color: V.text, textAlign: 'center' }}>
+          {meta.confirmLabel}
+        </div>
+        <div style={{ display: 'flex', gap: sp(10), width: '100%' }}>
+          <button
+            onClick={onCancel}
+            style={{
+              flex: 1, padding: `${sp(10)}px`, borderRadius: r(12),
+              border: `1px solid ${V.border}`, background: V.chipBg,
+              fontSize: fs(13), fontWeight: TYPE.weight.medium, color: V.text, cursor: 'pointer',
+            }}
+          >
+            Abbrechen
+          </button>
+          <button
+            onClick={onConfirm}
+            style={{
+              flex: 1, padding: `${sp(10)}px`, borderRadius: r(12),
+              border: 'none', background: V.text,
+              fontSize: fs(13), fontWeight: TYPE.weight.semibold, color: V.bg, cursor: 'pointer',
+            }}
+          >
+            Ja
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Screen 3 ─────────────────────────────────────────────────
 
 export default function Screen3({ onNavigate }: NavProps) {
-  const { containers, activeContainerId, activePlantId, auspflanzen } = useApp()
+  const {
+    containers, activeContainerId, activePlantId,
+    auspflanzen, updatePlant,
+    wateringEvents, fertilizingEvents, schnittEvents,
+    addWateringEvent, addFertilizingEvent, addSchnittEvent,
+    removeWateringEvent, removeFertilizingEvent, removeSchnittEvent,
+  } = useApp()
 
   const container = containers.find(c => c.id === activeContainerId) ?? containers[0]
   const PLANT     = container?.plants.find(p => p.id === activePlantId) ?? container?.plants[0]
 
-  const [beobachtung,    setBeobachtung]    = useState<BeobachtungType | null>(null)
+  const [beobachtung,     setBeobachtung]     = useState<BeobachtungType | null>(null)
   const [showAuspflanzen, setShowAuspflanzen] = useState(false)
+  const [pendingAction,   setPendingAction]   = useState<ActionType | null>(null)
 
-  const [kiStatus,  setKiStatus]  = useState<KiStatus>('idle')
-  const [kiText,    setKiText]    = useState('')
-  const [kiError,   setKiError]   = useState('')
+  const [kiStatus, setKiStatus] = useState<KiStatus>('idle')
+  const [kiText,   setKiText]   = useState('')
+  const [kiError,  setKiError]  = useState('')
 
-  const [log, setLog] = useState<LogItem[]>(INITIAL_LOG)
+  // Notes field — local state, persisted to context on blur
+  const [notesValue, setNotesValue] = useState(PLANT?.notes ?? '')
+  useEffect(() => { setNotesValue(PLANT?.notes ?? '') }, [PLANT?.id])
 
   const plantName = PLANT?.name ?? 'Unbekannte Pflanze'
-  const plantSub  = PLANT?.sub ?? ''
+  const plantSub  = PLANT?.sub  ?? ''
   const plantDays = PLANT ? daysSince(PLANT.plantedDate) : 0
   const imgSrc    = PLANT?.photoBase64
     ? `data:image/jpeg;base64,${PLANT.photoBase64}`
     : (PLANT?.imgUrl ?? '')
+
+  // Protokoll — merged from context, filtered by this plant, newest first
+  const protokoll = useMemo(() => {
+    if (!PLANT) return []
+    const pid = PLANT.id
+    const w = wateringEvents.filter(e => e.plantId === pid).map(e => ({
+      id: e.id, date: e.date, kind: 'giessen' as const,
+      note: e.ml ? `${e.ml} ml` : undefined,
+    }))
+    const f = fertilizingEvents.filter(e => e.plantId === pid).map(e => ({
+      id: e.id, date: e.date, kind: 'duengen' as const,
+      note: e.fertilizer ?? undefined,
+    }))
+    const s = schnittEvents.filter(e => e.plantId === pid).map(e => ({
+      id: e.id, date: e.date, kind: 'schnitt' as const,
+      note: undefined,
+    }))
+    return [...w, ...f, ...s].sort((a, b) => b.date.localeCompare(a.date))
+  }, [wateringEvents, fertilizingEvents, schnittEvents, PLANT?.id])
 
   const handleKiProfil = useCallback(async () => {
     if (kiStatus === 'loading') return
@@ -141,6 +219,27 @@ export default function Screen3({ onNavigate }: NavProps) {
         return { title: block.slice(0, nl), body: block.slice(nl + 1) }
       })
     : []
+
+  function handleActionConfirm() {
+    if (!PLANT || !container || !pendingAction) return
+    const today = new Date().toISOString().slice(0, 10)
+    const base = { date: today, containerId: container.id, plantId: PLANT.id, plantName: PLANT.name }
+    if (pendingAction === 'giessen') addWateringEvent({ ...base, ml: 200 })
+    else if (pendingAction === 'duengen') addFertilizingEvent(base)
+    else addSchnittEvent(base)
+    setPendingAction(null)
+  }
+
+  function fmtDate(iso: string) {
+    const [y, m, d] = iso.split('-')
+    return `${d}.${m}.${String(y).slice(2)}`
+  }
+
+  function deleteProtoEntry(kind: 'giessen' | 'duengen' | 'schnitt', id: string) {
+    if (kind === 'giessen') removeWateringEvent(id)
+    else if (kind === 'duengen') removeFertilizingEvent(id)
+    else removeSchnittEvent(id)
+  }
 
   return (
     <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
@@ -206,47 +305,42 @@ export default function Screen3({ onNavigate }: NavProps) {
           </button>
         </div>
 
-        {/* Stat tiles */}
+        {/* Stat tile — Sonne only */}
         <div style={{ padding: `${sp(6)}px ${sp(16)}px ${sp(10)}px`, display: 'flex', gap: sp(8), flexShrink: 0 }}>
-          <StatTile icon={<IconDropFill color={V.water} size={14} />} label="Heute" value="Giessen" highlight />
-          <StatTile icon={<IconSun color="#c05a2a" size={14} />}      label="Sonne" value="Voll" />
-          <StatTile icon={<IconThermo color={V.text} size={14} />}    label="Temp." value="22°" />
+          <StatTile icon={<IconSun color="#c05a2a" size={14} />} label="Sonne" value="Voll" />
         </div>
 
         {/* Scrollable content */}
         <div style={{ flex: 1, overflowY: 'auto', padding: `${sp(6)}px ${sp(20)}px ${sp(24)}px` }}>
 
-          {/* Watering callout */}
-          <div style={{
-            padding: `${sp(12)}px ${sp(14)}px`, borderRadius: r(14),
-            background: V.warnSoft, border: `1px solid ${V.warn}22`,
-            display: 'flex', alignItems: 'center', gap: sp(10), marginBottom: sp(18),
-          }}>
-            <div style={{
-              width: 36, height: 36, borderRadius: 18, background: V.warn,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-            }}>
-              <IconDropFill color="#fff" size={16} />
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: fs(13), fontWeight: TYPE.weight.semibold, color: V.text }}>Heute giessen</div>
-              <div style={{ fontSize: fs(11), color: V.textMuted }}>Ca. 200 ml · Erde fühlt sich trocken an</div>
-            </div>
-            <button style={{
-              padding: `${sp(7)}px ${sp(12)}px`, borderRadius: r(10),
-              background: V.warn, color: '#fff', border: 'none',
-              fontWeight: TYPE.weight.semibold, fontSize: fs(11.5), cursor: 'pointer',
-              flexShrink: 0,
-            }}>Giessen</button>
-          </div>
+          {/* ── Notizen ── */}
+          <SectionLabel label="Notizen" />
+          <textarea
+            value={notesValue}
+            onChange={e => setNotesValue(e.target.value)}
+            onBlur={() => {
+              if (PLANT && container) updatePlant(container.id, PLANT.id, { notes: notesValue })
+            }}
+            placeholder="Notizen für die KI, Beobachtungen, etc."
+            rows={3}
+            style={{
+              width: '100%', boxSizing: 'border-box',
+              padding: `${sp(11)}px ${sp(13)}px`,
+              borderRadius: r(12), border: `1px solid ${V.border}`,
+              background: V.bg, color: V.text,
+              fontSize: fs(12.5), fontFamily: TYPE.fontSans,
+              lineHeight: 1.5, resize: 'vertical',
+              outline: 'none', marginBottom: sp(22),
+            }}
+            onFocus={e => (e.target.style.borderColor = V.accent)}
+          />
 
           {/* ── Aktionen ── */}
           <SectionLabel label="Aktionen" />
           <div style={{ display: 'flex', gap: sp(8), marginBottom: sp(22) }}>
-            <ActionTile icon={<IconDropFill color={V.water}  size={16} />} label="Giessen" />
-            <ActionTile icon={<IconLeaf     color={V.accent} size={16} />} label="Düngen" />
-            <ActionTile icon={<IconScissors color={V.text}   size={16} />} label="Schnitt" />
-            <ActionTile icon={<IconPlus     color={V.text}   size={16} />} label="Notiz" />
+            <ActionTile icon={<IconDropFill color={V.water}  size={16} />} label="Giessen" onClick={() => setPendingAction('giessen')} />
+            <ActionTile icon={<IconLeaf     color={V.accent} size={16} />} label="Düngen"  onClick={() => setPendingAction('duengen')} />
+            <ActionTile icon={<IconScissors color={V.text}   size={16} />} label="Schnitt" onClick={() => setPendingAction('schnitt')} />
           </div>
 
           {/* ── Pflege ── */}
@@ -285,8 +379,7 @@ export default function Screen3({ onNavigate }: NavProps) {
                   onClick={() => setBeobachtung(t)}
                   style={{
                     flex: 1, padding: `${sp(11)}px ${sp(8)}px`,
-                    borderRadius: r(12),
-                    border: `1px solid ${V.border}`,
+                    borderRadius: r(12), border: `1px solid ${V.border}`,
                     background: V.chipBg,
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                     fontSize: fs(12.5), fontWeight: TYPE.weight.medium,
@@ -303,7 +396,6 @@ export default function Screen3({ onNavigate }: NavProps) {
           {/* ── KI-Profil ── */}
           <SectionLabel label="KI-Profil" />
           <div style={{ marginBottom: sp(22) }}>
-
             {kiStatus === 'idle' && (
               <button
                 onClick={handleKiProfil}
@@ -338,14 +430,11 @@ export default function Screen3({ onNavigate }: NavProps) {
             {kiStatus === 'done' && kiSections.length > 0 && (
               <div style={{ border: `1px solid ${V.accent}22`, borderRadius: r(14), overflow: 'hidden' }}>
                 {kiSections.map((s, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      padding: `${sp(11)}px ${sp(14)}px`,
-                      borderBottom: i < kiSections.length - 1 ? `1px solid ${V.border}` : 'none',
-                      background: i % 2 === 0 ? V.accentSoft : V.bg,
-                    }}
-                  >
+                  <div key={i} style={{
+                    padding: `${sp(11)}px ${sp(14)}px`,
+                    borderBottom: i < kiSections.length - 1 ? `1px solid ${V.border}` : 'none',
+                    background: i % 2 === 0 ? V.accentSoft : V.bg,
+                  }}>
                     {s.title && (
                       <div style={{
                         fontSize: fs(10.5), fontWeight: TYPE.weight.semibold,
@@ -392,45 +481,55 @@ export default function Screen3({ onNavigate }: NavProps) {
 
           {/* ── Protokoll ── */}
           <SectionLabel label="Protokoll" />
-          {log.length === 0 ? (
-            <div style={{ fontSize: fs(12), color: V.textMuted, textAlign: 'center', padding: `${sp(16)}px` }}>
+          {protokoll.length === 0 ? (
+            <div style={{ fontSize: fs(12), color: V.textFaint, paddingBottom: sp(8) }}>
               Noch keine Einträge
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: sp(12) }}>
-              {log.map(entry => (
-                <div key={entry.id} style={{ display: 'flex', gap: sp(12), alignItems: 'flex-start' }}>
-                  <div style={{
-                    fontSize: fs(10.5), color: V.textMuted, fontWeight: TYPE.weight.semibold,
-                    width: 44, flexShrink: 0, paddingTop: 1, fontVariantNumeric: 'tabular-nums',
-                  }}>{entry.date}</div>
-                  <div style={{ flex: 1, borderLeft: `1px solid ${V.border}`, paddingLeft: sp(12), paddingBottom: sp(4), position: 'relative' }}>
-                    <div style={{
-                      position: 'absolute', left: -4, top: 5,
-                      width: 7, height: 7, borderRadius: 4,
-                      background: V.accent, boxShadow: `0 0 0 2px ${V.bg}`,
-                    }} />
-                    <div style={{ fontSize: fs(12.5), fontWeight: TYPE.weight.semibold, color: V.text }}>{entry.title}</div>
-                    <div style={{ fontSize: fs(11.5), color: V.textMuted, marginTop: sp(2), lineHeight: 1.4 }}>{entry.body}</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: sp(8) }}>
+              {protokoll.map(entry => {
+                const meta = ACTION_META[entry.kind]
+                return (
+                  <div key={entry.id} style={{
+                    display: 'flex', alignItems: 'center', gap: sp(10),
+                    padding: `${sp(10)}px ${sp(12)}px`,
+                    borderRadius: r(12), border: `1px solid ${V.border}`, background: V.bg,
+                  }}>
+                    <span style={{ fontSize: 16, flexShrink: 0 }}>{meta.emoji}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: fs(12.5), fontWeight: TYPE.weight.semibold, color: V.text }}>
+                        {meta.label}
+                      </div>
+                      <div style={{ fontSize: fs(11), color: V.textMuted }}>
+                        {fmtDate(entry.date)}{entry.note ? ` · ${entry.note}` : ''}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => deleteProtoEntry(entry.kind, entry.id)}
+                      style={{
+                        width: 24, height: 24, borderRadius: 12, flexShrink: 0,
+                        border: 'none', background: V.chipBg,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        cursor: 'pointer', fontSize: 14, color: V.textMuted, lineHeight: 1,
+                      }}
+                    >
+                      ×
+                    </button>
                   </div>
-                  <button
-                    onClick={() => setLog(prev => prev.filter(e => e.id !== entry.id))}
-                    style={{
-                      width: 24, height: 24, borderRadius: 12, flexShrink: 0,
-                      border: 'none', background: V.chipBg,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      cursor: 'pointer', marginTop: 1, color: V.textMuted,
-                      fontSize: 14, lineHeight: 1,
-                    }}
-                    aria-label="Eintrag löschen"
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>
+
+        {/* Confirm popup — inside sheet so it's clipped correctly */}
+        {pendingAction && (
+          <ConfirmPopup
+            action={pendingAction}
+            onConfirm={handleActionConfirm}
+            onCancel={() => setPendingAction(null)}
+          />
+        )}
       </div>
 
       {/* Beobachtung overlay */}
