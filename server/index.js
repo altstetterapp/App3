@@ -112,6 +112,6 @@ app.listen(PORT, () => {
   console.log(`
 \u{1F331} Rooftop Planner API  \u2192  http://localhost:${PORT}`);
   console.log(`   Password gate         :  ${PW === "dev" ? "dev (default \u2014 set APP_PASSWORD to change)" : "***"}`);
-  console.log(`   Claude AI             :  placeholder (set ANTHROPIC_API_KEY on Replit)
+  console.log(`   Claude AI             :  ${process.env.ANTHROPIC_API_KEY ? "enabled (Anthropic key set)" : "placeholder (set ANTHROPIC_API_KEY to enable)"}
 `);
 });

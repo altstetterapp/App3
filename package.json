@@ -7,7 +7,7 @@
     "dev": "concurrently -n client,server -c cyan,green \"vite\" \"tsx watch server/index.ts\"",
     "dev:client": "vite",
     "dev:server": "tsx watch server/index.ts",
-    "build": "tsc -b && vite build && esbuild server/index.ts --bundle=false --platform=node --format=esm --outfile=server/index.js",
+    "build": "npx tsc -b && npx vite build && npx esbuild server/index.ts --bundle=false --platform=node --format=esm --outfile=server/index.js",
     "preview": "vite preview"
   },
   "dependencies": {

@@ -168,5 +168,5 @@ if (process.env.NODE_ENV === 'production') {
 app.listen(PORT, () => {
   console.log(`\n🌱 Rooftop Planner API  →  http://localhost:${PORT}`)
   console.log(`   Password gate         :  ${PW === 'dev' ? 'dev (default — set APP_PASSWORD to change)' : '***'}`)
-  console.log(`   Claude AI             :  placeholder (set ANTHROPIC_API_KEY on Replit)\n`)
+  console.log(`   Claude AI             :  ${process.env.ANTHROPIC_API_KEY ? 'enabled (Anthropic key set)' : 'placeholder (set ANTHROPIC_API_KEY to enable)'}\n`)
 })
