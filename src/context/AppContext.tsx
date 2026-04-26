@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react'
 import type { ContainerData, PlantData, PlantHistory, WateringEvent, FertilizingEvent, SchnittEvent } from '../types'
+import { supabase } from '../lib/supabase'
 
 // ─── Initial seed data ────────────────────────────────────────
 
@@ -88,7 +89,9 @@ const SEED_FERTILIZING: FertilizingEvent[] = [
 
 const uid = () => Math.random().toString(36).slice(2, 10)
 
-function load(): ContainerData[] {
+// ─── localStorage helpers ─────────────────────────────────────
+
+function loadLocal(): ContainerData[] {
   try {
     const raw = localStorage.getItem('rp_containers')
     if (raw) return JSON.parse(raw) as ContainerData[]
@@ -96,21 +99,57 @@ function load(): ContainerData[] {
   return SEED
 }
 
-function loadEvents<T>(key: string, fallback: T[]): T[] {
+function loadLocalEvents<T>(key: string, fallback: T[]): T[] {
   try {
     const raw = localStorage.getItem(key)
     return raw ? (JSON.parse(raw) as T[]) : fallback
   } catch { return fallback }
 }
 
-function save(data: ContainerData[]) {
+function saveLocal(data: ContainerData[]) {
   try { localStorage.setItem('rp_containers', JSON.stringify(data)) } catch { /* quota exceeded */ }
+}
+
+// ─── Supabase → app-type mappers ─────────────────────────────
+
+function dbRowsToContainers(
+  rows: { containers: { id: string; name: string; img_url: string; photo_base64: string | null; irrigated: boolean; ml_per_week: number | null; water_status: string; water_label: string }[]; plants: { id: string; container_id: string; name: string; sub: string; stage: string; planted_date: string; img_url: string; photo_base64: string | null; notes: string | null; sun_exposure: string | null; water_label: string; water_status: string }[] }
+): ContainerData[] {
+  const plantsByContainer = new Map<string, PlantData[]>()
+  for (const p of rows.plants) {
+    const list = plantsByContainer.get(p.container_id) ?? []
+    list.push({
+      id: p.id,
+      name: p.name,
+      sub: p.sub,
+      stage: p.stage,
+      plantedDate: p.planted_date,
+      imgUrl: p.img_url,
+      photoBase64: p.photo_base64 ?? undefined,
+      notes: p.notes ?? undefined,
+      sunExposure: (p.sun_exposure as PlantData['sunExposure']) ?? undefined,
+      water: { label: p.water_label, status: p.water_status as 'ok' | 'warn' },
+    })
+    plantsByContainer.set(p.container_id, list)
+  }
+  return rows.containers.map(c => ({
+    id: c.id,
+    name: c.name,
+    imgUrl: c.img_url,
+    photoBase64: c.photo_base64 ?? undefined,
+    irrigated: c.irrigated,
+    mlPerWeek: c.ml_per_week ?? undefined,
+    water: { status: c.water_status as 'ok' | 'warn' | 'due', label: c.water_label },
+    plants: plantsByContainer.get(c.id) ?? [],
+    history: [],
+  }))
 }
 
 // ─── Context definition ───────────────────────────────────────
 
 interface AppCtx {
   containers: ContainerData[]
+  loading: boolean
   activeContainerId: string
   activePlantId: string
   setActiveContainer: (id: string) => void
@@ -137,21 +176,80 @@ interface AppCtx {
 const Ctx = createContext<AppCtx | null>(null)
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [containers, setContainers] = useState<ContainerData[]>(load)
+  const hasSupabase = supabase !== null
+  const localEmpty  = !localStorage.getItem('rp_containers')
+
+  const [loading,    setLoading]    = useState(hasSupabase && localEmpty)
+  const [containers, setContainers] = useState<ContainerData[]>(() => loadLocal())
   const [activeContainerId, setActiveContainerId] = useState('beeren')
   const [activePlantId,     setActivePlantId]     = useState('p-ber-2')
 
   const [wateringEvents,    setWateringEvents]    = useState<WateringEvent[]>(
-    () => loadEvents('rp_watering', SEED_WATERING)
+    () => loadLocalEvents('rp_watering', SEED_WATERING)
   )
   const [fertilizingEvents, setFertilizingEvents] = useState<FertilizingEvent[]>(
-    () => loadEvents('rp_fertilizing', SEED_FERTILIZING)
+    () => loadLocalEvents('rp_fertilizing', SEED_FERTILIZING)
   )
   const [schnittEvents,     setSchnittEvents]     = useState<SchnittEvent[]>(
-    () => loadEvents('rp_schnitt', [])
+    () => loadLocalEvents('rp_schnitt', [])
   )
 
-  useEffect(() => { save(containers) }, [containers])
+  // ─── Load from Supabase on mount ─────────────────────────────
+  useEffect(() => {
+    if (!supabase) return
+    ;(async () => {
+      try {
+        const [{ data: cRows }, { data: pRows }, { data: wRows }, { data: fRows }, { data: sRows }] =
+          await Promise.all([
+            supabase.from('containers').select('*').order('created_at'),
+            supabase.from('plants').select('*').order('created_at'),
+            supabase.from('watering_events').select('*').order('date', { ascending: false }),
+            supabase.from('fertilizing_events').select('*').order('date', { ascending: false }),
+            supabase.from('schnitt_events').select('*').order('date', { ascending: false }),
+          ])
+
+        if (cRows && cRows.length > 0) {
+          const merged = dbRowsToContainers({ containers: cRows as Parameters<typeof dbRowsToContainers>[0]['containers'], plants: (pRows ?? []) as Parameters<typeof dbRowsToContainers>[0]['plants'] })
+          setContainers(merged)
+          saveLocal(merged)
+        }
+        if (wRows && wRows.length > 0) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const mapped: WateringEvent[] = wRows.map((r: any) => ({
+            id: r.id, date: r.date, containerId: r.container_id,
+            plantId: r.plant_id, plantName: r.plant_name, ml: r.ml ?? undefined,
+          }))
+          setWateringEvents(mapped)
+          try { localStorage.setItem('rp_watering', JSON.stringify(mapped)) } catch { /* quota */ }
+        }
+        if (fRows && fRows.length > 0) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const mapped: FertilizingEvent[] = fRows.map((r: any) => ({
+            id: r.id, date: r.date, containerId: r.container_id,
+            plantId: r.plant_id, plantName: r.plant_name, fertilizer: r.fertilizer ?? undefined,
+          }))
+          setFertilizingEvents(mapped)
+          try { localStorage.setItem('rp_fertilizing', JSON.stringify(mapped)) } catch { /* quota */ }
+        }
+        if (sRows && sRows.length > 0) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const mapped: SchnittEvent[] = sRows.map((r: any) => ({
+            id: r.id, date: r.date, containerId: r.container_id,
+            plantId: r.plant_id, plantName: r.plant_name,
+          }))
+          setSchnittEvents(mapped)
+          try { localStorage.setItem('rp_schnitt', JSON.stringify(mapped)) } catch { /* quota */ }
+        }
+      } catch (err) {
+        console.warn('[Supabase] load failed, using local data:', err)
+      } finally {
+        setLoading(false)
+      }
+    })()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ─── Persist to localStorage on every change ─────────────────
+  useEffect(() => { saveLocal(containers) }, [containers])
   useEffect(() => {
     try { localStorage.setItem('rp_watering',    JSON.stringify(wateringEvents))    } catch { /* quota */ }
   }, [wateringEvents])
@@ -165,34 +263,80 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const setActiveContainer = useCallback((id: string) => setActiveContainerId(id), [])
   const setActivePlant     = useCallback((id: string) => setActivePlantId(id),     [])
 
+  // ─── Container CRUD ───────────────────────────────────────────
+
   const addContainer = useCallback((draft: Omit<ContainerData, 'id' | 'plants' | 'history'>) => {
+    const id = crypto.randomUUID()
     setContainers(prev => {
-      const next = [...prev, { ...draft, id: uid(), plants: [], history: [] }]
-      save(next); return next
+      const next = [...prev, { ...draft, id, plants: [], history: [] }]
+      saveLocal(next); return next
     })
+    supabase?.from('containers').insert({
+      id,
+      name: draft.name,
+      img_url: draft.imgUrl,
+      photo_base64: draft.photoBase64 ?? null,
+      irrigated: draft.irrigated,
+      ml_per_week: draft.mlPerWeek ?? null,
+      water_status: draft.water.status,
+      water_label: draft.water.label,
+    })// eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .then(({ error }: any) => { if (error) console.warn('[Supabase] addContainer:', error.message) })
   }, [])
 
   const updateContainer = useCallback((id: string, patch: Partial<Omit<ContainerData, 'id' | 'plants' | 'history'>>) => {
     setContainers(prev => {
       const next = prev.map(c => c.id === id ? { ...c, ...patch } : c)
-      save(next); return next
+      saveLocal(next); return next
     })
+    const dbPatch: Record<string, unknown> = {}
+    if (patch.name       !== undefined) dbPatch.name         = patch.name
+    if (patch.imgUrl     !== undefined) dbPatch.img_url      = patch.imgUrl
+    if (patch.photoBase64!== undefined) dbPatch.photo_base64 = patch.photoBase64 ?? null
+    if (patch.irrigated  !== undefined) dbPatch.irrigated    = patch.irrigated
+    if (patch.mlPerWeek  !== undefined) dbPatch.ml_per_week  = patch.mlPerWeek ?? null
+    if (patch.water      !== undefined) { dbPatch.water_status = patch.water.status; dbPatch.water_label = patch.water.label }
+    if (Object.keys(dbPatch).length > 0)
+      supabase?.from('containers').update(dbPatch).eq('id', id)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .then(({ error }: any) => { if (error) console.warn('[Supabase] updateContainer:', error.message) })
   }, [])
 
   const deleteContainer = useCallback((id: string) => {
     setContainers(prev => {
       const next = prev.filter(c => c.id !== id)
-      save(next); return next
+      saveLocal(next); return next
     })
+    supabase?.from('containers').delete().eq('id', id)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .then(({ error }: any) => { if (error) console.warn('[Supabase] deleteContainer:', error.message) })
   }, [])
 
+  // ─── Plant CRUD ───────────────────────────────────────────────
+
   const addPlant = useCallback((containerId: string, draft: Omit<PlantData, 'id'>) => {
+    const id = crypto.randomUUID()
     setContainers(prev => {
       const next = prev.map(c => c.id === containerId
-        ? { ...c, plants: [...c.plants, { ...draft, id: uid() }] }
+        ? { ...c, plants: [...c.plants, { ...draft, id }] }
         : c)
-      save(next); return next
+      saveLocal(next); return next
     })
+    supabase?.from('plants').insert({
+      id,
+      container_id: containerId,
+      name: draft.name,
+      sub: draft.sub,
+      stage: draft.stage,
+      planted_date: draft.plantedDate,
+      img_url: draft.imgUrl,
+      photo_base64: draft.photoBase64 ?? null,
+      notes: draft.notes ?? null,
+      sun_exposure: draft.sunExposure ?? null,
+      water_label: draft.water.label,
+      water_status: draft.water.status,
+    })// eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .then(({ error }: any) => { if (error) console.warn('[Supabase] addPlant:', error.message) })
   }, [])
 
   const updatePlant = useCallback((containerId: string, plantId: string, patch: Partial<Omit<PlantData, 'id'>>) => {
@@ -201,8 +345,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
         ...c,
         plants: c.plants.map(p => p.id === plantId ? { ...p, ...patch } : p),
       })
-      save(next); return next
+      saveLocal(next); return next
     })
+    const dbPatch: Record<string, unknown> = {}
+    if (patch.name        !== undefined) dbPatch.name         = patch.name
+    if (patch.sub         !== undefined) dbPatch.sub          = patch.sub
+    if (patch.stage       !== undefined) dbPatch.stage        = patch.stage
+    if (patch.plantedDate !== undefined) dbPatch.planted_date = patch.plantedDate
+    if (patch.imgUrl      !== undefined) dbPatch.img_url      = patch.imgUrl
+    if (patch.photoBase64 !== undefined) dbPatch.photo_base64 = patch.photoBase64 ?? null
+    if (patch.notes       !== undefined) dbPatch.notes        = patch.notes ?? null
+    if (patch.sunExposure !== undefined) dbPatch.sun_exposure = patch.sunExposure ?? null
+    if (patch.water       !== undefined) { dbPatch.water_label = patch.water.label; dbPatch.water_status = patch.water.status }
+    if (Object.keys(dbPatch).length > 0)
+      supabase?.from('plants').update(dbPatch).eq('id', plantId)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .then(({ error }: any) => { if (error) console.warn('[Supabase] updatePlant:', error.message) })
   }, [])
 
   const auspflanzen = useCallback((containerId: string, plantId: string, date: string) => {
@@ -217,8 +375,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
         return { ...c, plants: c.plants.filter(p => p.id !== plantId), history: [entry, ...c.history] }
       })
-      save(next); return next
+      saveLocal(next); return next
     })
+    supabase?.from('plants').delete().eq('id', plantId)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .then(({ error }: any) => { if (error) console.warn('[Supabase] auspflanzen delete plant:', error.message) })
   }, [])
 
   const deleteHistory = useCallback((containerId: string, historyId: string) => {
@@ -226,37 +387,67 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const next = prev.map(c => c.id === containerId
         ? { ...c, history: c.history.filter(h => h.id !== historyId) }
         : c)
-      save(next); return next
+      saveLocal(next); return next
     })
   }, [])
 
+  // ─── Event CRUD ───────────────────────────────────────────────
+
   const addWateringEvent = useCallback((e: Omit<WateringEvent, 'id'>) => {
-    setWateringEvents(prev => [...prev, { ...e, id: uid() }])
+    const id = crypto.randomUUID()
+    setWateringEvents(prev => [...prev, { ...e, id }])
+    supabase?.from('watering_events').insert({
+      id, date: e.date, container_id: e.containerId,
+      plant_id: e.plantId, plant_name: e.plantName, ml: e.ml ?? null,
+    })// eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .then(({ error }: any) => { if (error) console.warn('[Supabase] addWatering:', error.message) })
   }, [])
 
   const addFertilizingEvent = useCallback((e: Omit<FertilizingEvent, 'id'>) => {
-    setFertilizingEvents(prev => [...prev, { ...e, id: uid() }])
+    const id = crypto.randomUUID()
+    setFertilizingEvents(prev => [...prev, { ...e, id }])
+    supabase?.from('fertilizing_events').insert({
+      id, date: e.date, container_id: e.containerId,
+      plant_id: e.plantId, plant_name: e.plantName, fertilizer: e.fertilizer ?? null,
+    })// eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .then(({ error }: any) => { if (error) console.warn('[Supabase] addFertilizing:', error.message) })
+  }, [])
+
+  const addSchnittEvent = useCallback((e: Omit<SchnittEvent, 'id'>) => {
+    const id = crypto.randomUUID()
+    setSchnittEvents(prev => [...prev, { ...e, id }])
+    supabase?.from('schnitt_events').insert({
+      id, date: e.date, container_id: e.containerId,
+      plant_id: e.plantId, plant_name: e.plantName,
+    })// eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .then(({ error }: any) => { if (error) console.warn('[Supabase] addSchnitt:', error.message) })
   }, [])
 
   const removeWateringEvent = useCallback((id: string) => {
     setWateringEvents(prev => prev.filter(e => e.id !== id))
+    supabase?.from('watering_events').delete().eq('id', id)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .then(({ error }: any) => { if (error) console.warn('[Supabase] removeWatering:', error.message) })
   }, [])
 
   const removeFertilizingEvent = useCallback((id: string) => {
     setFertilizingEvents(prev => prev.filter(e => e.id !== id))
-  }, [])
-
-  const addSchnittEvent = useCallback((e: Omit<SchnittEvent, 'id'>) => {
-    setSchnittEvents(prev => [...prev, { ...e, id: uid() }])
+    supabase?.from('fertilizing_events').delete().eq('id', id)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .then(({ error }: any) => { if (error) console.warn('[Supabase] removeFertilizing:', error.message) })
   }, [])
 
   const removeSchnittEvent = useCallback((id: string) => {
     setSchnittEvents(prev => prev.filter(e => e.id !== id))
+    supabase?.from('schnitt_events').delete().eq('id', id)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .then(({ error }: any) => { if (error) console.warn('[Supabase] removeSchnitt:', error.message) })
   }, [])
 
   return (
     <Ctx.Provider value={{
-      containers, activeContainerId, activePlantId,
+      containers, loading,
+      activeContainerId, activePlantId,
       setActiveContainer, setActivePlant,
       addContainer, updateContainer, deleteContainer,
       addPlant, updatePlant, auspflanzen, deleteHistory,

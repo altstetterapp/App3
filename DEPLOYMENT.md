@@ -7,6 +7,8 @@ Set these in the Replit **Secrets** panel (padlock icon in the sidebar):
 | Variable | Required | Description |
 |---|---|---|
 | `APP_PASSWORD` | **Yes** | Password for the login gate. Default in dev is `dev` — always override in production. |
+| `VITE_SUPABASE_URL` | **Yes** | Supabase project URL, e.g. `https://xxxxxx.supabase.co`. Without it the app falls back to localStorage only. |
+| `VITE_SUPABASE_ANON_KEY` | **Yes** | Supabase `anon` public key (JWT). Safe to expose in the browser. |
 | `ANTHROPIC_API_KEY` | No (mock active) | Anthropic API key for real AI responses. Without it the server returns mock text. |
 | `PORT` | No | HTTP port the server listens on. Replit sets this automatically; default is `3001`. |
 | `NODE_ENV` | No | Set to `production` to enable static file serving of `dist/`. The `.replit` file sets this automatically. |
