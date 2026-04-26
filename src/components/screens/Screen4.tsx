@@ -75,7 +75,8 @@ interface BarDay {
   day: string
   date: string
   ml: number
-  rain: boolean
+  precip: number   // mm from weather, all days
+  rain: boolean    // future day with precip > 2mm (skip watering)
   today: boolean
   isPast: boolean
 }
@@ -102,11 +103,12 @@ function build7DayBars(events: WateringEvent[], precipMap: Record<string, number
     const ml = (isPast || isToday)
       ? events.filter(e => e.date === iso).reduce((s, e) => s + (e.ml ?? 0), 0)
       : 0
-    const rain = offset > 0 && (precipMap[iso] ?? 0) > 2
+    const precip = Math.round((precipMap[iso] ?? 0) * 10) / 10
+    const rain   = offset > 0 && precip > 2
     return {
       iso, day: DE_DAYS[d.getDay()],
       date: `${d.getDate()}.${d.getMonth() + 1}.`,
-      ml, rain, today: isToday, isPast,
+      ml, precip, rain, today: isToday, isPast,
     }
   })
 }
@@ -239,40 +241,41 @@ function WeekBars({ bars }: { bars: BarDay[] }) {
       height: sp(130),
     }}>
       {bars.map((d) => {
-        const barH = d.rain ? 0 : d.ml > 0 ? Math.max(4, (d.ml / barMax) * 80) : 0
-        const isFuture = !d.isPast && !d.today
+        const isFuture  = !d.isPast && !d.today
+        const hasRain   = d.precip > 0
+        const barH      = d.rain ? 0 : d.ml > 0 ? Math.max(4, (d.ml / barMax) * 80) : 0
+        const barColor  = hasRain
+          ? V.water
+          : d.today ? V.accent : d.isPast ? V.accentSoft : V.border
+        const labelColor = hasRain ? V.water : d.today ? V.accent : V.textFaint
 
         return (
           <div key={d.iso} style={{
             flex: 1, display: 'flex', flexDirection: 'column',
             alignItems: 'center', height: '100%', justifyContent: 'flex-end', gap: sp(5),
           }}>
-            {/* ml label or rain */}
+            {/* label: precip mm (blue) or watered ml */}
             <span style={{
               fontSize: fs(9), fontWeight: TYPE.weight.semibold,
-              color: d.today ? V.accent : V.textFaint,
-              fontVariantNumeric: 'tabular-nums',
+              color: labelColor, fontVariantNumeric: 'tabular-nums',
             }}>
-              {d.rain ? '☂' : d.ml > 0 ? d.ml : isFuture ? '' : '—'}
+              {hasRain
+                ? `${d.precip}mm`
+                : d.ml > 0 ? d.ml : isFuture ? '' : '—'}
             </span>
             {/* bar */}
             {d.rain ? (
               <div style={{
                 width: '68%', height: 20, borderRadius: r(4),
-                background: V.waterSoft,
-                border: `1px dashed ${V.water}`,
+                background: V.water, opacity: 0.55,
               }} />
             ) : (
               <div style={{
                 width: '68%',
                 height: barH > 0 ? barH : isFuture ? 3 : 0,
                 borderRadius: r(4),
-                background: d.today
-                  ? V.accent
-                  : d.isPast
-                    ? V.accentSoft
-                    : V.border,
-                opacity: isFuture && !d.rain ? 0.4 : 1,
+                background: barColor,
+                opacity: isFuture && !hasRain ? 0.4 : 1,
               }} />
             )}
             {/* day */}
