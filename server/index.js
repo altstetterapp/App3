@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import multer from "multer";
 import sharp from "sharp";
+import Anthropic from "@anthropic-ai/sdk";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 const __filename = fileURLToPath(import.meta.url);
@@ -41,13 +42,39 @@ app.post("/api/auth", (req, res) => {
 app.get("/api/health", (_req, res) => {
   res.json({ ok: true, mode: process.env.NODE_ENV ?? "development" });
 });
-app.post("/api/ai", requirePassword, (req, res) => {
+const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null;
+app.post("/api/ai", requirePassword, async (req, res) => {
   const { prompt, systemPrompt, imageBase64 } = req.body;
   console.log("[/api/ai]", {
     prompt: prompt?.slice(0, 80),
     systemPrompt: systemPrompt?.slice(0, 60),
-    image: imageBase64 ? `${Math.round(imageBase64.length / 1024)} KB` : "none"
+    image: imageBase64 ? `${Math.round(imageBase64.length / 1024)} KB` : "none",
+    mode: anthropic ? "claude" : "mock"
   });
+  if (anthropic) {
+    try {
+      const userContent = imageBase64 ? [
+        {
+          type: "image",
+          source: { type: "base64", media_type: "image/jpeg", data: imageBase64 }
+        },
+        { type: "text", text: prompt }
+      ] : prompt;
+      const msg = await anthropic.messages.create({
+        model: "claude-3-5-haiku-20241022",
+        max_tokens: 1024,
+        system: systemPrompt ?? "Du bist ein Pflanzenexperte. Antworte auf Deutsch.",
+        messages: [{ role: "user", content: userContent }]
+      });
+      const text = msg.content.filter((b) => b.type === "text").map((b) => b.text).join("\n");
+      res.json({ text });
+      return;
+    } catch (err) {
+      console.error("[/api/ai] Anthropic error:", err);
+      res.status(502).json({ error: "KI-Anfrage fehlgeschlagen. Bitte erneut versuchen." });
+      return;
+    }
+  }
   const p = (prompt ?? "").toLowerCase();
   let mockText;
   if (p.includes("profil") || p.includes("pflegeprofil")) {

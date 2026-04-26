@@ -2,6 +2,7 @@ import express, { type Request, type Response, type NextFunction } from 'express
 import cors from 'cors'
 import multer from 'multer'
 import sharp from 'sharp'
+import Anthropic from '@anthropic-ai/sdk'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
 
@@ -63,22 +64,54 @@ interface AIBody {
   imageBase64?: string
 }
 
-app.post('/api/ai', requirePassword, (req: Request, res: Response) => {
+const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null
+
+app.post('/api/ai', requirePassword, async (req: Request, res: Response) => {
   const { prompt, systemPrompt, imageBase64 } = req.body as AIBody
 
   console.log('[/api/ai]', {
     prompt:       prompt?.slice(0, 80),
     systemPrompt: systemPrompt?.slice(0, 60),
     image:        imageBase64 ? `${Math.round(imageBase64.length / 1024)} KB` : 'none',
+    mode:         anthropic ? 'claude' : 'mock',
   })
 
-  // ── TODO (Replit): swap for real Anthropic SDK call ──────────
-  // import Anthropic from '@anthropic-ai/sdk'
-  // const client = new Anthropic()
-  // const msg = await client.messages.create({ ... })
-  // res.json({ text: msg.content[0].text })
+  // ── Real Claude API call ──────────────────────────────────────
+  if (anthropic) {
+    try {
+      const userContent: Anthropic.MessageParam['content'] = imageBase64
+        ? [
+            {
+              type: 'image',
+              source: { type: 'base64', media_type: 'image/jpeg', data: imageBase64 },
+            },
+            { type: 'text', text: prompt },
+          ]
+        : prompt
+
+      const msg = await anthropic.messages.create({
+        model:      'claude-3-5-haiku-20241022',
+        max_tokens: 1024,
+        system:     systemPrompt ?? 'Du bist ein Pflanzenexperte. Antworte auf Deutsch.',
+        messages:   [{ role: 'user', content: userContent }],
+      })
+
+      const text = msg.content
+        .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+        .map(b => b.text)
+        .join('\n')
+
+      res.json({ text })
+      return
+    } catch (err) {
+      console.error('[/api/ai] Anthropic error:', err)
+      res.status(502).json({ error: 'KI-Anfrage fehlgeschlagen. Bitte erneut versuchen.' })
+      return
+    }
+  }
   // ─────────────────────────────────────────────────────────────
 
+  // ── Mock fallback (no API key) ────────────────────────────────
   const p = (prompt ?? '').toLowerCase()
 
   let mockText: string

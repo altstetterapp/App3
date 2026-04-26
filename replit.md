@@ -65,9 +65,9 @@ server/
 
 ## AI Integration
 
-The `/api/ai` endpoint currently returns mock responses. To enable real AI:
-1. Set the `ANTHROPIC_API_KEY` secret in Replit
-2. Replace the mock response section in `server/index.ts` with the Anthropic SDK call (see the TODO comment in the file)
+The `/api/ai` endpoint uses the Anthropic Claude API (`claude-3-5-haiku-20241022`) when `ANTHROPIC_API_KEY` is set, and falls back to built-in mock responses automatically if the key is absent. Image-based requests (plant photo diagnostics) are forwarded to Claude's vision API as base64 JPEG. Text-only requests (care profiles, pest descriptions) are sent as plain text prompts.
+
+To enable AI: set the `ANTHROPIC_API_KEY` secret in Replit (already done). No code changes needed.
 
 ## Supabase Integration (Optional)
 
