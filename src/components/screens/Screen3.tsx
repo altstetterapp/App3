@@ -19,6 +19,9 @@ const SHEET_H = Math.round(D.sheetH * PHONE.height)
 type BeobachtungType = 'befall' | 'auffaelligkeit'
 type KiStatus = 'idle' | 'loading' | 'done' | 'error'
 type ActionType = 'giessen' | 'duengen' | 'schnitt'
+type SunOption = 'Vollsonne' | 'Halbsonnig' | 'Schattig' | 'Indoor'
+
+const SUN_OPTIONS: SunOption[] = ['Vollsonne', 'Halbsonnig', 'Schattig', 'Indoor']
 
 const ACTION_META: Record<ActionType, { emoji: string; label: string; confirmLabel: string }> = {
   giessen: { emoji: '💧', label: 'Giessen',  confirmLabel: 'Giessen bestätigen?' },
@@ -160,6 +163,7 @@ export default function Screen3({ onNavigate }: NavProps) {
   const [beobachtung,     setBeobachtung]     = useState<BeobachtungType | null>(null)
   const [showAuspflanzen, setShowAuspflanzen] = useState(false)
   const [pendingAction,   setPendingAction]   = useState<ActionType | null>(null)
+  const [showSunPicker,   setShowSunPicker]   = useState(false)
 
   const [kiStatus, setKiStatus] = useState<KiStatus>('idle')
   const [kiText,   setKiText]   = useState('')
@@ -305,9 +309,48 @@ export default function Screen3({ onNavigate }: NavProps) {
           </button>
         </div>
 
-        {/* Stat tile — Sonne only */}
-        <div style={{ padding: `${sp(6)}px ${sp(16)}px ${sp(10)}px`, display: 'flex', gap: sp(8), flexShrink: 0 }}>
-          <StatTile icon={<IconSun color="#c05a2a" size={14} />} label="Sonne" value="Voll" />
+        {/* Stat tile — Sonne (interactive) */}
+        <div style={{ padding: `${sp(6)}px ${sp(16)}px ${sp(10)}px`, display: 'flex', gap: sp(8), flexShrink: 0, position: 'relative' }}>
+          <div onClick={() => setShowSunPicker(v => !v)} style={{ flex: 1, cursor: 'pointer' }}>
+            <StatTile icon={<IconSun color="#c05a2a" size={14} />} label="Sonne" value={PLANT?.sunExposure ?? 'Vollsonne'} />
+          </div>
+          {showSunPicker && (
+            <>
+              <div onClick={() => setShowSunPicker(false)} style={{ position: 'fixed', inset: 0, zIndex: 50 }} />
+              <div style={{
+                position: 'absolute', top: '100%', left: sp(16), zIndex: 51,
+                background: V.bg, borderRadius: r(14), border: `1px solid ${V.border}`,
+                boxShadow: '0 8px 24px rgba(43,31,22,0.14)',
+                overflow: 'hidden', minWidth: 160,
+              }}>
+                {SUN_OPTIONS.map((opt, i) => {
+                  const selected = (PLANT?.sunExposure ?? 'Vollsonne') === opt
+                  return (
+                    <button
+                      key={opt}
+                      onClick={() => {
+                        if (PLANT && container) updatePlant(container.id, PLANT.id, { sunExposure: opt })
+                        setShowSunPicker(false)
+                      }}
+                      style={{
+                        display: 'block', width: '100%',
+                        padding: `${sp(11)}px ${sp(16)}px`,
+                        background: selected ? V.accentSoft : 'none',
+                        border: 'none',
+                        borderBottom: i < SUN_OPTIONS.length - 1 ? `1px solid ${V.border}` : 'none',
+                        textAlign: 'left', fontSize: fs(13),
+                        fontWeight: selected ? TYPE.weight.semibold : TYPE.weight.medium,
+                        color: selected ? V.accent : V.text,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {opt}
+                    </button>
+                  )
+                })}
+              </div>
+            </>
+          )}
         </div>
 
         {/* Scrollable content */}

@@ -45,6 +45,7 @@ export interface PlantData {
   imgUrl: string
   photoBase64?: string
   notes?: string
+  sunExposure?: 'Vollsonne' | 'Halbsonnig' | 'Schattig' | 'Indoor'
   water: { label: string; status: 'ok' | 'warn' }
 }
 
